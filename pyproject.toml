@@ -1,5 +1,8 @@
 [project]
-name = "exif-date-renamer"
+name = "metadate-renamer"
 version = "0.1.0"
 requires-python = ">=3.13"
-dependencies = []
+dependencies = [
+    "customtkinter>=5.2.2",
+    "exifread>=3.3.1",
+]
