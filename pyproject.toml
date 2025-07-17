@@ -5,4 +5,5 @@ requires-python = ">=3.13"
 dependencies = [
     "customtkinter>=5.2.2",
     "exifread>=3.3.1",
+    "hachoir>=3.3.0",
 ]

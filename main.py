@@ -8,6 +8,8 @@ from typing import TYPE_CHECKING
 
 import customtkinter as ctk
 import exifread
+from hachoir.metadata import extractMetadata
+from hachoir.parser import createParser
 
 if TYPE_CHECKING:
     from exifread.core.ifd_tag import IfdTag
@@ -61,10 +63,24 @@ def extract_date_from_image(file_path: Path) -> datetime | None:
 
 
 def extract_date_from_video(file_path: Path) -> datetime | None:
-    logging.warning(
-        "Video date extraction not implemented. Skipping %s", file_path.name
-    )
-    return None
+    logging.debug("Processing video: %s", file_path.name)
+    try:
+        parser = createParser(str(file_path))
+        if not parser:
+            logging.warning("Unable to parse video file: %s", file_path.name)
+            return None
+
+        with parser:
+            metadata = extractMetadata(parser)
+
+        if metadata and metadata.has("creation_date"):
+            return metadata.get("creation_date")
+
+        logging.info("No 'creation_date' metadata in %s", file_path.name)
+        return None
+    except Exception as e:
+        logging.error("Could not process video file %s: %s", file_path.name, e)
+        return None
 
 
 class App(ctk.CTk):
