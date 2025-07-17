@@ -41,6 +41,10 @@ VIDEO_EXTENSIONS = (
     ".mp4",
     ".mov",
 )
+IMAGE_DATE_TAGS = (
+    "EXIF DateTimeOriginal",
+    "Image DateTime",
+)
 
 RENAME_DATE_FORMAT = "%Y-%m-%d_%H-%M-%S"
 
@@ -51,12 +55,18 @@ def extract_date_from_image(file_path: Path) -> datetime | None:
         with file_path.open("rb") as image_file:
             tags = exifread.process_file(image_file, details=False)
 
-        tag: IfdTag | None = tags.get("EXIF DateTimeOriginal")
-        if tag is None:
-            logging.info("No 'EXIF DateTimeOriginal' tag in %s", file_path.name)
+        date_str = None
+        for tag_name in IMAGE_DATE_TAGS:
+            tag: IfdTag | None = tags.get(tag_name)
+            if tag:
+                date_str = tag.values
+                break
+
+        if date_str is None:
+            logging.info("No suitable date tag found in %s", file_path.name)
             return None
 
-        return datetime.strptime(tag.values, "%Y:%m:%d %H:%M:%S")
+        return datetime.strptime(date_str, "%Y:%m:%d %H:%M:%S")
     except Exception as e:
         logging.error("Could not process image file %s: %s", file_path.name, e)
         return None
