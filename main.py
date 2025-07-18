@@ -1,4 +1,5 @@
 import logging
+import re
 import sys
 from collections import Counter
 from concurrent import futures
@@ -53,6 +54,7 @@ EXIF_DATE_TAGS = (
 )
 
 TARGET_DATE_FORMAT = "%Y-%m-%d_%H-%M-%S"
+RENAMED_REGEX = re.compile(r"^\d{4}-\d{2}-\d{2}_\d{2}-\d{2}-\d{2}(_\d+)?(\.\w+)?$")
 
 
 class Status(StrEnum):
@@ -273,13 +275,18 @@ class App(ctk.CTk):
             logging.info("Directory selection cancelled")
 
     def _create_renamed_filename(self, file_path: Path, timestamp: datetime) -> str:
-        count = self._date_counter[timestamp]
-        self._date_counter[timestamp] += 1
-
         formatted = timestamp.strftime(TARGET_DATE_FORMAT)
-        new_name = f"{formatted}_{count}{file_path.suffix}"
-        logging.debug("Formatted new filename '%s' from %s", new_name, timestamp)
 
+        while 1:
+            count = self._date_counter[timestamp]
+            self._date_counter[timestamp] += 1
+
+            new_name = f"{formatted}_{count}{file_path.suffix}"
+            new_path = file_path.parent / new_name
+            if not new_path.exists():
+                break
+
+        logging.debug("Formatted new filename '%s' from %s", new_name, timestamp)
         return new_name
 
     def _scan_directory(self, directory: Path) -> None:
@@ -292,6 +299,10 @@ class App(ctk.CTk):
         for path in sorted(directory.iterdir()):
             if not path.is_file():
                 logging.debug("Skipping non-file: %s", path.name)
+                continue
+
+            if RENAMED_REGEX.match(path.name):
+                logging.debug("Skipping already renamed file: %s", path.name)
                 continue
 
             suffix = path.suffix.lower()
