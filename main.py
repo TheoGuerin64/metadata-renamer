@@ -265,7 +265,10 @@ class App(ctk.CTk):
         if selected:
             logging.info("Directory selected: %s", selected)
             self._update_folder_path_input(selected)
-            self._scan_directory(Path(selected))
+
+            self._lock()
+            future = self._executor.submit(self._scan_directory, Path(selected))
+            future.add_done_callback(lambda _: self._unlock())
         else:
             logging.info("Directory selection cancelled")
 
@@ -353,10 +356,10 @@ class App(ctk.CTk):
             logging.debug("Job %s result: %s", job.item_id, status)
             return job.item_id, FileEntry(job.original_name, job.proposed_name, status)
 
+        self._lock()
         futures_list = [
             self._executor.submit(_rename_job, job) for job in self._pending_renames
         ]
-        logging.info("Submitted %d rename tasks", len(futures_list))
 
         def _update_results() -> None:
             for index, future in enumerate(futures.as_completed(futures_list), start=1):
