@@ -38,8 +38,14 @@ IMAGE_EXTENSIONS = (
     ".hif",
 )
 VIDEO_EXTENSIONS = (
+    ".avi",
     ".mp4",
     ".mov",
+    ".mkv",
+    ".flv",
+    ".wmv",
+    ".mpeg",
+    ".webm",
 )
 IMAGE_DATE_TAGS = (
     "EXIF DateTimeOriginal",
