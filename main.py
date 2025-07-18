@@ -7,9 +7,6 @@ from tkinter import filedialog, ttk
 from typing import TYPE_CHECKING
 
 import customtkinter as ctk
-import exifread
-from hachoir.metadata import extractMetadata
-from hachoir.parser import createParser
 
 if TYPE_CHECKING:
     from exifread.core.ifd_tag import IfdTag
@@ -56,10 +53,12 @@ RENAME_DATE_FORMAT = "%Y-%m-%d_%H-%M-%S"
 
 
 def extract_date_from_image(file_path: Path) -> datetime | None:
+    from exifread import process_file
+
     logging.debug("Processing image: %s", file_path.name)
     try:
         with file_path.open("rb") as image_file:
-            tags = exifread.process_file(image_file, details=False)
+            tags = process_file(image_file, details=False)
 
         date_str = None
         for tag_name in IMAGE_DATE_TAGS:
@@ -80,6 +79,9 @@ def extract_date_from_image(file_path: Path) -> datetime | None:
 
 
 def extract_date_from_video(file_path: Path) -> datetime | None:
+    from hachoir.metadata import extractMetadata
+    from hachoir.parser import createParser
+
     logging.debug("Processing video: %s", file_path.name)
     try:
         parser = createParser(str(file_path))
