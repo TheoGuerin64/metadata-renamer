@@ -144,9 +144,18 @@ class App(ctk.CTk):
         self._pending_renames: list[RenameJob] = []
         self._date_counter: Counter[datetime] = Counter()
 
-    def __exit__(self, exc: BaseException | None = None) -> None:
+    def __enter__(self) -> Self:
+        logging.debug("ThreadPoolExecutor initialized")
+        return self
+
+    def __exit__(
+        self,
+        exc_type: type[BaseException] | None = None,
+        exc_value: BaseException | None = None,
+        traceback: TracebackType | None = None,
+    ) -> None:
         self._executor.shutdown(wait=False)
-        logging.debug("ThreadPoolExecutor shutdown complete")
+        logging.debug("ThreadPoolExecutor shutdown")
 
     def _init_window(self) -> None:
         self.title(WINDOW_TITLE)
@@ -412,8 +421,8 @@ def main() -> None:
     )
 
     logging.info("Application start (debug=%s)", debug_mode)
-    app = App()
-    app.mainloop()
+    with App() as app:
+        app.mainloop()
     logging.info("Application exit")
 
 
