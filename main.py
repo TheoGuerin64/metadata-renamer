@@ -1,21 +1,23 @@
 import logging
 import sys
 from collections import Counter
+from concurrent import futures
 from datetime import datetime
+from enum import StrEnum
 from pathlib import Path
 from tkinter import filedialog, ttk
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, NamedTuple
 
 import customtkinter as ctk
 
 if TYPE_CHECKING:
     from exifread.core.ifd_tag import IfdTag
 
-WINDOW_NAME = "MetaDate Renamer"
+WINDOW_TITLE = "MetaDate Renamer"
 WINDOW_SIZE = "800x600"
 COLOR_THEME = "blue"
 
-IMAGE_EXTENSIONS = (
+IMAGE_FILE_EXTENSIONS = (
     ".tiff",
     ".tif",
     ".jpg",
@@ -34,7 +36,7 @@ IMAGE_EXTENSIONS = (
     ".avcs",
     ".hif",
 )
-VIDEO_EXTENSIONS = (
+VIDEO_FILE_EXTENSIONS = (
     ".avi",
     ".mp4",
     ".mov",
@@ -44,49 +46,66 @@ VIDEO_EXTENSIONS = (
     ".mpeg",
     ".webm",
 )
-IMAGE_DATE_TAGS = (
+
+EXIF_DATE_TAGS = (
     "EXIF DateTimeOriginal",
     "Image DateTime",
 )
 
-RENAME_DATE_FORMAT = "%Y-%m-%d_%H-%M-%S"
+TARGET_DATE_FORMAT = "%Y-%m-%d_%H-%M-%S"
+
+
+class Status(StrEnum):
+    READY = "Ready"
+    NO_CHANGE = "No Change"
+    NO_DATE_FOUND = "No Date Found"
+    CONFLICT = "Conflict"
+    RENAMED = "Renamed"
+    ERROR = "Error"
+
+
+class FileEntry(NamedTuple):
+    original_name: str
+    proposed_name: str
+    status: Status
+
+
+class RenameJob(NamedTuple):
+    item_id: str
+    original_name: str
+    proposed_name: str
 
 
 def extract_date_from_image(file_path: Path) -> datetime | None:
     from exifread import process_file
 
-    logging.debug("Processing image: %s", file_path.name)
+    logging.debug("Extracting EXIF date from image: %s", file_path.name)
     try:
-        with file_path.open("rb") as image_file:
-            tags = process_file(image_file, details=False)
+        with file_path.open("rb") as image:
+            tags = process_file(image, details=False, extract_thumbnail=False)
 
-        date_str = None
-        for tag_name in IMAGE_DATE_TAGS:
-            tag: IfdTag | None = tags.get(tag_name)
-            if tag:
-                date_str = tag.values
-                logging.debug("Found date tag '%s' in %s", tag_name, file_path.name)
-                break
+        for expected_tag in EXIF_DATE_TAGS:
+            tag: IfdTag | None = tags.get(expected_tag)
+            if tag is not None:
+                logging.debug("Found EXIF tag '%s' in %s", expected_tag, file_path.name)
+                return datetime.strptime(tag.values, "%Y:%m:%d %H:%M:%S")
 
-        if date_str is None:
-            logging.info("No suitable date tag found in %s", file_path.name)
-            return None
+        logging.info("No EXIF date tag in %s", file_path.name)
+    except Exception as error:
+        logging.error("Failed to read EXIF from %s: %s", file_path.name, error)
 
-        return datetime.strptime(date_str, "%Y:%m:%d %H:%M:%S")
-    except Exception as e:
-        logging.error("Could not process image file %s: %s", file_path.name, e)
-        return None
+    return None
 
 
 def extract_date_from_video(file_path: Path) -> datetime | None:
     from hachoir.metadata import extractMetadata
     from hachoir.parser import createParser
 
-    logging.debug("Processing video: %s", file_path.name)
+    logging.debug("Extracting metadata date from video: %s", file_path.name)
     try:
         parser = createParser(str(file_path))
         if not parser:
-            logging.warning("Unable to parse video file: %s", file_path.name)
+            logging.warning("Cannot parse video file: %s", file_path.name)
             return None
 
         with parser:
@@ -95,54 +114,59 @@ def extract_date_from_video(file_path: Path) -> datetime | None:
         if metadata and metadata.has("creation_date"):
             creation_date = metadata.get("creation_date")
             logging.debug(
-                "Found creation_date '%s' in %s", creation_date, file_path.name
+                "Found metadata date '%s' in %s", creation_date, file_path.name
             )
             return creation_date
 
-        logging.info("No 'creation_date' metadata in %s", file_path.name)
-        return None
-    except Exception as e:
-        logging.error("Could not process video file %s: %s", file_path.name, e)
-        return None
+        logging.info("No 'creation_date' in metadata for %s", file_path.name)
+    except Exception as error:
+        logging.error("Failed to extract metadata from %s: %s", file_path.name, error)
+
+    return None
 
 
 class App(ctk.CTk):
     def __init__(self):
         super().__init__()
-        self._setup_window()
-        self._setup_top_frame()
-        self._setup_treeview()
-        self._setup_bottom_frame()
 
-        self._rename_queue: list[tuple[str, str, str]] = []
-        self._date_count: Counter[datetime] = Counter()
+        self._init_window()
+        self._init_top_controls()
+        self._init_treeview()
+        self._init_bottom_controls()
 
-    def _setup_window(self) -> None:
-        self.title(WINDOW_NAME)
+        self._executor = futures.ThreadPoolExecutor()
+        self._pending_renames: list[RenameJob] = []
+        self._date_counter: Counter[datetime] = Counter()
+
+    def _init_window(self) -> None:
+        self.title(WINDOW_TITLE)
         self.geometry(WINDOW_SIZE)
         ctk.set_appearance_mode("system")
         ctk.set_default_color_theme(COLOR_THEME)
+
         self.grid_columnconfigure(0, weight=1)
-        logging.debug("Window setup complete")
 
-    def _setup_top_frame(self) -> None:
-        top_frame = ctk.CTkFrame(self, corner_radius=0)
-        top_frame.grid(row=0, column=0, sticky="ew", padx=10, pady=10)
-        top_frame.grid_columnconfigure(1, weight=1)
+        logging.debug("Window set to '%s', size %s", WINDOW_TITLE, WINDOW_SIZE)
 
-        media_folder_label = ctk.CTkLabel(top_frame, text="Media Folder:")
-        media_folder_label.grid(row=0, column=0, padx=10, pady=10)
+    def _init_top_controls(self) -> None:
+        top_panel = ctk.CTkFrame(self, corner_radius=0)
+        top_panel.grid(row=0, column=0, sticky="ew", padx=10, pady=10)
+        top_panel.grid_columnconfigure(1, weight=1)
 
-        self.folder_path_entry = ctk.CTkEntry(top_frame, state="readonly")
-        self.folder_path_entry.grid(row=0, column=1, sticky="ew")
-
-        browse_button = ctk.CTkButton(
-            top_frame, text="Browse...", command=self._select_folder
+        ctk.CTkLabel(top_panel, text="Media Folder:").grid(
+            row=0, column=0, padx=10, pady=10
         )
-        browse_button.grid(row=0, column=2, padx=10)
-        logging.debug("Top frame setup complete")
+        self.folder_path_input = ctk.CTkEntry(top_panel, state="readonly")
+        self.folder_path_input.grid(row=0, column=1, sticky="ew")
 
-    def _setup_treeview(self):
+        self.browse_button = ctk.CTkButton(
+            top_panel, text="Browse...", command=self._browse_directory
+        )
+        self.browse_button.grid(row=0, column=2, padx=10)
+
+        logging.debug("Top controls initialized")
+
+    def _init_treeview(self) -> None:
         style = ttk.Style()
         bg_color = self._apply_appearance_mode(
             ctk.ThemeManager.theme["CTkFrame"]["fg_color"]
@@ -162,13 +186,13 @@ class App(ctk.CTk):
         style.configure("Treeview.Heading", font=("Calibri", 12, "bold"))
         style.layout("Treeview", [("Treeview.treearea", {"sticky": "nswe"})])
 
-        treeview_frame = ctk.CTkFrame(self, corner_radius=0)
-        treeview_frame.grid(row=1, column=0, sticky="nsew", padx=10, pady=0)
-        treeview_frame.grid_rowconfigure(0, weight=1)
-        treeview_frame.grid_columnconfigure(0, weight=1)
+        tree_panel = ctk.CTkFrame(self, corner_radius=0)
+        tree_panel.grid(row=1, column=0, sticky="nsew", padx=10)
+        tree_panel.grid_rowconfigure(0, weight=1)
+        tree_panel.grid_columnconfigure(0, weight=1)
 
         self.treeview = ttk.Treeview(
-            treeview_frame,
+            tree_panel,
             columns=("original", "new-name", "status"),
             show="headings",
         )
@@ -182,151 +206,176 @@ class App(ctk.CTk):
         self.treeview.column("new-name", width=300)
         self.treeview.column("status", width=100, anchor="center")
 
-        scrollbar = ctk.CTkScrollbar(treeview_frame, command=self.treeview.yview)
+        scrollbar = ctk.CTkScrollbar(tree_panel, command=self.treeview.yview)
         scrollbar.grid(row=0, column=1, sticky="ns")
         self.treeview.configure(yscrollcommand=scrollbar.set)
 
         self.grid_rowconfigure(1, weight=1)
-        logging.debug("Treeview setup complete")
+        logging.debug("Treeview initialized")
 
-    def _setup_bottom_frame(self):
-        bottom_frame = ctk.CTkFrame(self)
-        bottom_frame.grid(row=2, column=0, sticky="ew", padx=10, pady=10)
-        bottom_frame.grid_columnconfigure(0, weight=1)
+    def _init_bottom_controls(self) -> None:
+        bottom_panel = ctk.CTkFrame(self)
+        bottom_panel.grid(row=2, column=0, sticky="ew", padx=10, pady=10)
+        bottom_panel.grid_columnconfigure(0, weight=1)
 
         self.rename_button = ctk.CTkButton(
-            bottom_frame, text="Rename Files", command=self._start_rename_process
+            bottom_panel, text="Rename Files", command=self._start_renaming
         )
         self.rename_button.grid(row=0, column=0, columnspan=2, pady=10, padx=10)
 
-        self.progress_bar = ctk.CTkProgressBar(bottom_frame)
-        self.progress_bar.set(0)
-        self.progress_bar.grid(
+        self.rename_progress = ctk.CTkProgressBar(bottom_panel)
+        self.rename_progress.set(0)
+        self.rename_progress.grid(
             row=1, column=0, columnspan=2, sticky="ew", padx=10, pady=(0, 10)
         )
-        logging.debug("Bottom frame setup complete")
+        logging.debug("Bottom controls initialized")
 
-    def _clean_treeview(self) -> None:
-        logging.debug("Clearing all items from the treeview.")
+    def _clear_treeview(self) -> None:
         self.treeview.delete(*self.treeview.get_children())
+        logging.debug("Cleared items from treeview")
 
-    def _set_folder_path_entry(self, folder_path: str) -> None:
-        self.folder_path_entry.configure(state="normal")
-        self.folder_path_entry.delete(0, "end")
-        self.folder_path_entry.insert(0, folder_path)
-        self.folder_path_entry.configure(state="readonly")
-        logging.debug("Set folder path entry to: %s", folder_path)
+    def _update_folder_path_input(self, path: str) -> None:
+        self.folder_path_input.configure(state="normal")
 
-    def _add_file_to_treeview(
-        self, original_name: str, new_name: str, status: str
-    ) -> str:
-        item_id = self.treeview.insert(
-            "", "end", values=(original_name, new_name, status)
-        )
-        self.update_idletasks()
+        self.folder_path_input.delete(0, "end")
+        self.folder_path_input.insert(0, path)
+
+        self.folder_path_input.configure(state="readonly")
+        logging.debug("Folder path set to: %s", path)
+
+    def _insert_treeview_entry(self, entry: FileEntry) -> str:
+        item_id = self.treeview.insert("", "end", values=entry)
+        logging.debug("Inserted treeview entry: %s", entry)
         return item_id
 
-    def _select_folder(self):
-        folder_selected = filedialog.askdirectory()
-        if folder_selected:
-            folder_path = Path(folder_selected)
-            logging.info("Folder selected: %s", folder_path)
-            self._set_folder_path_entry(str(folder_path))
-            self._scan_folder(folder_path)
+    def _lock(self) -> None:
+        self.rename_button.configure(state="disabled")
+        self.browse_button.configure(state="disabled")
+        self.folder_path_input.configure(state="disabled")
+        logging.debug("Input UI locked")
+
+    def _unlock(self) -> None:
+        self.rename_button.configure(state="normal")
+        self.browse_button.configure(state="normal")
+        self.folder_path_input.configure(state="readonly")
+        logging.debug("Input UI unlocked")
+
+    def _browse_directory(self) -> None:
+        selected = filedialog.askdirectory()
+        if selected:
+            logging.info("Directory selected: %s", selected)
+            self._update_folder_path_input(selected)
+            self._scan_directory(Path(selected))
         else:
-            logging.info("Folder selection cancelled.")
+            logging.info("Directory selection cancelled")
 
-    def _new_filename(self, file_path: Path, date: datetime) -> str:
-        formated_date = date.strftime(RENAME_DATE_FORMAT)
-        count = self._date_count[date]
+    def _create_renamed_filename(self, file_path: Path, timestamp: datetime) -> str:
+        count = self._date_counter[timestamp]
+        self._date_counter[timestamp] += 1
 
-        new_filename = f"{formated_date}_{count}{file_path.suffix}"
-        self._date_count[date] += 1
+        formatted = timestamp.strftime(TARGET_DATE_FORMAT)
+        new_name = f"{formatted}_{count}{file_path.suffix}"
+        logging.debug("Formatted new filename '%s' from %s", new_name, timestamp)
 
-        return new_filename
+        return new_name
 
-    def _scan_folder(self, folder_path: Path) -> None:
-        logging.info("Scanning folder: %s", folder_path)
-        self._clean_treeview()
-        self.progress_bar.set(0)
-        self._rename_queue.clear()
-        self._date_count.clear()
+    def _scan_directory(self, directory: Path) -> None:
+        logging.info("Scanning directory: %s", directory)
+        self._clear_treeview()
+        self.rename_progress.set(0)
+        self._pending_renames.clear()
+        self._date_counter.clear()
 
-        for file_path in sorted(folder_path.iterdir()):
-            if not file_path.is_file():
-                logging.debug("Skipping non-file item: %s", file_path.name)
+        for path in sorted(directory.iterdir()):
+            if not path.is_file():
+                logging.debug("Skipping non-file: %s", path.name)
                 continue
 
-            file_suffix = file_path.suffix.lower()
-            if file_suffix in IMAGE_EXTENSIONS:
-                date = extract_date_from_image(file_path)
-            elif file_suffix in VIDEO_EXTENSIONS:
-                date = extract_date_from_video(file_path)
+            suffix = path.suffix.lower()
+            if suffix in IMAGE_FILE_EXTENSIONS:
+                date = extract_date_from_image(path)
+            elif suffix in VIDEO_FILE_EXTENSIONS:
+                date = extract_date_from_video(path)
             else:
-                logging.debug("Skipping unsupported file type: %s", file_path.name)
+                logging.debug("Unsupported type: %s", path.name)
                 continue
 
             if date is None:
-                self._add_file_to_treeview(file_path.name, "", "No Date Found")
+                entry = FileEntry(path.name, "", Status.NO_DATE_FOUND)
+                self._insert_treeview_entry(entry)
+                self.update_idletasks()
                 continue
 
-            new_filename = self._new_filename(file_path, date)
-            status = "Ready" if new_filename != file_path.name else "No Change"
+            new_name = self._create_renamed_filename(path, date)
+            status = Status.READY if new_name != path.name else Status.NO_CHANGE
 
-            item_id = self._add_file_to_treeview(file_path.name, new_filename, status)
-            if status != "Ready":
-                continue
-
-            self._rename_queue.append((item_id, file_path.name, new_filename))
-
-        count = len(self._rename_queue)
-        logging.info("Scan complete. Found %d files ready for renaming.", count)
-
-    def _start_rename_process(self):
-        if not self._rename_queue:
-            logging.info("No files to rename.")
-            return
-
-        total_items = len(self._rename_queue)
-        logging.info("Starting rename process for %d files.", total_items)
-        self.progress_bar.set(0)
-
-        folder_path = Path(self.folder_path_entry.get())
-        rename_queue = list(self._rename_queue)
-        self._rename_queue.clear()
-
-        for index, (item_id, original_filename, new_filename) in enumerate(
-            rename_queue
-        ):
-            original_path = folder_path / original_filename
-            new_path = folder_path / new_filename
-            status = ""
-
-            try:
-                if new_path.exists():
-                    status = "Conflict"
-                    logging.warning(
-                        "Could not rename '%s' because '%s' already exists.",
-                        original_filename,
-                        new_filename,
-                    )
-                else:
-                    original_path.rename(new_path)
-                    status = "Renamed"
-                    logging.info(
-                        "Renamed '%s' to '%s'", original_filename, new_filename
-                    )
-            except Exception as e:
-                logging.error("Error renaming '%s': %s", original_filename, e)
-                status = "Error"
-
-            self.treeview.item(
-                item_id, values=(original_filename, new_filename, status)
-            )
-            self.progress_bar.set((index + 1) / total_items)
+            entry = FileEntry(path.name, new_name, status)
+            item_id = self._insert_treeview_entry(entry)
             self.update_idletasks()
 
-        logging.info("Rename process finished.")
+            if new_name != path.name:
+                job = RenameJob(item_id, path.name, new_name)
+                self._pending_renames.append(job)
+
+        total_ready = len(self._pending_renames)
+        logging.info("Scan complete: %d files ready", total_ready)
+
+    def _start_renaming(self) -> None:
+        if not self._pending_renames:
+            logging.info("No files scheduled for renaming")
+            return
+
+        total = len(self._pending_renames)
+        logging.info("Starting rename of %d files", total)
+        self._lock()
+
+        self.rename_progress.set(0)
+        base_dir = Path(self.folder_path_input.get())
+
+        def _rename_job(job: RenameJob) -> tuple[str, FileEntry]:
+            src = base_dir / job.original_name
+            dst = base_dir / job.proposed_name
+
+            try:
+                if dst.exists():
+                    status = Status.CONFLICT
+                    logging.warning("Conflict: %s exists", job.proposed_name)
+                else:
+                    src.rename(dst)
+                    status = Status.RENAMED
+                    logging.info(
+                        "Renamed '%s' to '%s'", job.original_name, job.proposed_name
+                    )
+            except Exception as error:
+                status = Status.ERROR
+                logging.error("Error renaming %s: %s", job.original_name, error)
+
+            logging.debug("Job %s result: %s", job.item_id, status)
+            return job.item_id, FileEntry(job.original_name, job.proposed_name, status)
+
+        futures_list = [
+            self._executor.submit(_rename_job, job) for job in self._pending_renames
+        ]
+        logging.info("Submitted %d rename tasks", len(futures_list))
+
+        def _update_results() -> None:
+            for index, future in enumerate(futures.as_completed(futures_list), start=1):
+                try:
+                    item_id, entry = future.result()
+                except Exception as error:
+                    logging.error("Rename task failed: %s", error)
+                    continue
+
+                logging.debug("Updating item %s to %s", item_id, entry.status)
+                self.treeview.item(item_id, values=entry)
+                self.rename_progress.set(index / total)
+                self.update_idletasks()
+
+            self.rename_progress.set(1)
+            self._unlock()
+            logging.info("Rename process completed (%d files)", total)
+
+        self._executor.submit(_update_results)
 
 
 def main() -> None:
@@ -341,10 +390,10 @@ def main() -> None:
         ],
     )
 
-    logging.info("Application started")
+    logging.info("Application start (debug=%s)", debug_mode)
     app = App()
     app.mainloop()
-    logging.info("Application closed")
+    logging.info("Application exit")
 
 
 if __name__ == "__main__":
