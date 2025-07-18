@@ -66,6 +66,7 @@ def extract_date_from_image(file_path: Path) -> datetime | None:
             tag: IfdTag | None = tags.get(tag_name)
             if tag:
                 date_str = tag.values
+                logging.debug("Found date tag '%s' in %s", tag_name, file_path.name)
                 break
 
         if date_str is None:
@@ -90,7 +91,11 @@ def extract_date_from_video(file_path: Path) -> datetime | None:
             metadata = extractMetadata(parser)
 
         if metadata and metadata.has("creation_date"):
-            return metadata.get("creation_date")
+            creation_date = metadata.get("creation_date")
+            logging.debug(
+                "Found creation_date '%s' in %s", creation_date, file_path.name
+            )
+            return creation_date
 
         logging.info("No 'creation_date' metadata in %s", file_path.name)
         return None
@@ -116,6 +121,7 @@ class App(ctk.CTk):
         ctk.set_appearance_mode("system")
         ctk.set_default_color_theme(COLOR_THEME)
         self.grid_columnconfigure(0, weight=1)
+        logging.debug("Window setup complete")
 
     def _setup_top_frame(self) -> None:
         top_frame = ctk.CTkFrame(self, corner_radius=0)
@@ -132,6 +138,7 @@ class App(ctk.CTk):
             top_frame, text="Browse...", command=self._select_folder
         )
         browse_button.grid(row=0, column=2, padx=10)
+        logging.debug("Top frame setup complete")
 
     def _setup_treeview(self):
         style = ttk.Style()
@@ -178,6 +185,7 @@ class App(ctk.CTk):
         self.treeview.configure(yscrollcommand=scrollbar.set)
 
         self.grid_rowconfigure(1, weight=1)
+        logging.debug("Treeview setup complete")
 
     def _setup_bottom_frame(self):
         bottom_frame = ctk.CTkFrame(self)
@@ -194,8 +202,10 @@ class App(ctk.CTk):
         self.progress_bar.grid(
             row=1, column=0, columnspan=2, sticky="ew", padx=10, pady=(0, 10)
         )
+        logging.debug("Bottom frame setup complete")
 
     def _clean_treeview(self) -> None:
+        logging.debug("Clearing all items from the treeview.")
         self.treeview.delete(*self.treeview.get_children())
 
     def _set_folder_path_entry(self, folder_path: str) -> None:
@@ -203,6 +213,7 @@ class App(ctk.CTk):
         self.folder_path_entry.delete(0, "end")
         self.folder_path_entry.insert(0, folder_path)
         self.folder_path_entry.configure(state="readonly")
+        logging.debug("Set folder path entry to: %s", folder_path)
 
     def _add_file_to_treeview(
         self, original_name: str, new_name: str, status: str
@@ -220,6 +231,8 @@ class App(ctk.CTk):
             logging.info("Folder selected: %s", folder_path)
             self._set_folder_path_entry(str(folder_path))
             self._scan_folder(folder_path)
+        else:
+            logging.info("Folder selection cancelled.")
 
     def _new_filename(self, file_path: Path, date: datetime) -> str:
         formated_date = date.strftime(RENAME_DATE_FORMAT)
