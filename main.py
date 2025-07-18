@@ -54,7 +54,9 @@ EXIF_DATE_TAGS = (
 )
 
 TARGET_DATE_FORMAT = "%Y-%m-%d_%H-%M-%S"
-RENAMED_REGEX = re.compile(r"^\d{4}-\d{2}-\d{2}_\d{2}-\d{2}-\d{2}(_\d+)?(\.\w+)?$")
+RENAMED_REGEX = re.compile(
+    r"^\d{4}-\d{2}-\d{2}_\d{2}-\d{2}-\d{2}(_\d+)?(\.\w+)?$", re.IGNORECASE
+)
 
 
 class Status(StrEnum):
@@ -115,6 +117,8 @@ def extract_date_from_video(file_path: Path) -> datetime | None:
 
         if metadata and metadata.has("creation_date"):
             creation_date = metadata.get("creation_date")
+            if isinstance(creation_date, str):
+                creation_date = datetime.strptime(creation_date, "%Y-%m-%d %H:%M:%S")
             logging.debug(
                 "Found metadata date '%s' in %s", creation_date, file_path.name
             )
@@ -139,6 +143,10 @@ class App(ctk.CTk):
         self._executor = futures.ThreadPoolExecutor()
         self._pending_renames: list[RenameJob] = []
         self._date_counter: Counter[datetime] = Counter()
+
+    def __exit__(self, exc: BaseException | None = None) -> None:
+        self._executor.shutdown(wait=False)
+        logging.debug("ThreadPoolExecutor shutdown complete")
 
     def _init_window(self) -> None:
         self.title(WINDOW_TITLE)
@@ -367,7 +375,6 @@ class App(ctk.CTk):
             logging.debug("Job %s result: %s", job.item_id, status)
             return job.item_id, FileEntry(job.original_name, job.proposed_name, status)
 
-        self._lock()
         futures_list = [
             self._executor.submit(_rename_job, job) for job in self._pending_renames
         ]
