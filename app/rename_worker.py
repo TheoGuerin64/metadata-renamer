@@ -29,7 +29,7 @@ class RenameWorker(QObject):
         self._files = files
 
     def run(self) -> None:
-        date_counter: Counter[datetime] = Counter()
+        date_counter: Counter[tuple[datetime, str]] = Counter()
 
         for index, path in enumerate(sorted(self._files), start=1):
             if not path.is_file():
@@ -48,8 +48,8 @@ class RenameWorker(QObject):
                 continue
 
             while True:
-                count = date_counter[date]
-                date_counter[date] += 1
+                count = date_counter[(date, path.suffix)]
+                date_counter[(date, path.suffix)] += 1
 
                 new_name = date.strftime(_TARGET_DATE_FORMAT)
                 if count > 0:
