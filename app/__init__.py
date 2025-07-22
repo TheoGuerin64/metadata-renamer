@@ -18,6 +18,7 @@ def main() -> None:
     )
 
     app = QApplication(sys.argv)
+    app.setStyle("Fusion")
     window = MainWindow()
     window.show()
     sys.exit(app.exec())
