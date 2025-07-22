@@ -13,7 +13,6 @@ def main() -> None:
         format="%(asctime)s - %(levelname)s - %(message)s",
         handlers=[
             logging.FileHandler("metadate_renamer.log"),
-            logging.StreamHandler(),
         ],
     )
 
