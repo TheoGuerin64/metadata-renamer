@@ -26,6 +26,5 @@ jobs:
         uses: svenstaro/upload-release-action@v2
         with:
           file: dist/metadate-renamer.exe
-          asset_name: metadate-renamer-windows
           body: "Binaries for Windows"
 
