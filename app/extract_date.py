@@ -83,7 +83,11 @@ def _from_video(path: Path) -> datetime | None:
 
     logging.debug("Extracting metadata date from %s", path.name)
 
-    parser = createParser(str(path))
+    try:
+        parser = createParser(str(path))
+    except Exception as error:
+        logging.error("Failed to create parser for %s: %s", path.name, error)
+        return None
     if not parser:
         logging.error("No parser created for %s", path.name)
         return None
