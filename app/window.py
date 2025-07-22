@@ -73,7 +73,7 @@ class MainWidget(QWidget):
             "Rename all files in the selected directory based on metadata"
         )
         self.rename_button.setEnabled(False)
-        self.rename_button.clicked.connect(self._on_rename_clicked)
+        self.rename_button.clicked.connect(self.start_rename_process)
         layout.addWidget(self.rename_button)
 
         self.progress_bar = QProgressBar()
@@ -92,9 +92,13 @@ class MainWidget(QWidget):
             self.directory_line_edit.setText(selected)
             self.rename_button.setEnabled(True)
 
-    def _on_rename_clicked(self) -> None:
+    @pyqtSlot()
+    def start_rename_process(self) -> None:
         assert self._selected_path is not None
         files = list(self._selected_path.iterdir())
+        if not files:
+            self.progress_bar.setFormat("No files to rename in the selected directory")
+            return
 
         self.progress_bar.setValue(0)
         self.progress_bar.setMaximum(len(files))
