@@ -7,16 +7,16 @@ from typing import TYPE_CHECKING, cast
 if TYPE_CHECKING:
     from pathlib import Path
 
-    from exifread.core.ifd_tag import IfdTag
-
 
 _IMAGE_FILE_EXTENSIONS = (
     ".jpg",
     ".jpeg",
     ".png",
-    ".heif",
     ".heic",
+    ".heif",
     ".webp",
+    ".tif",
+    ".tiff",
 )
 _VIDEO_FILE_EXTENSIONS = (
     ".mp4",
@@ -38,21 +38,40 @@ def from_file(file: Path) -> datetime | None:
 
 
 def _from_image(path: Path) -> datetime | None:
-    from exifread import process_file
+    from PIL import Image
+    from PIL.ExifTags import IFD
+    from PIL.ExifTags import Base as ExifBase
 
     logging.debug("Extracting EXIF date from %s", path.name)
 
     try:
-        with path.open("rb") as file:
-            tags = process_file(file, details=False, extract_thumbnail=False)
+        image = Image.open(path)
     except OSError as error:
         logging.error("Failed to read %s: %s", path.name, error)
         return None
 
-    tag: IfdTag | None = tags.get("EXIF DateTimeOriginal")
-    if tag is not None:
-        logging.debug("Found EXIF date '%s' in %s", tag.values, path.name)
-        return datetime.strptime(tag.values, "%Y:%m:%d %H:%M:%S")
+    exif = image.getexif()
+    if not exif:
+        logging.info("No EXIF data found in %s", path.name)
+        return None
+
+    ifd = exif.get_ifd(IFD.Exif)
+    if ifd is None:
+        logging.info("No EXIF IFD found in %s", path.name)
+        return None
+
+    raw_date: str | None = ifd.get(ExifBase.DateTimeOriginal)
+    if raw_date is not None:
+        try:
+            date = datetime.strptime(raw_date, "%Y:%m:%d %H:%M:%S")
+        except ValueError as e:
+            logging.error(
+                "Failed to parse EXIF date '%s' in %s: %s", raw_date, path.name, e
+            )
+            return None
+
+        logging.debug("Found EXIF date '%s' in %s", date, path.name)
+        return date
 
     logging.info("No EXIF date tag in %s", path.name)
     return None

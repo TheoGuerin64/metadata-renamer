@@ -3,7 +3,7 @@ name = "metadate-renamer"
 version = "0.1.0"
 requires-python = ">=3.13"
 dependencies = [
-    "exifread>=3.3.1",
     "hachoir>=3.3.0",
+    "pillow>=11.3.0",
     "pyqt6>=6.9.1",
 ]
