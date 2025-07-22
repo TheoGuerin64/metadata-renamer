@@ -5,7 +5,7 @@ import re
 from collections import Counter
 from typing import TYPE_CHECKING
 
-from PyQt6.QtCore import QObject, pyqtSignal
+from PySide6.QtCore import QObject, Signal
 
 from app import extract_date
 
@@ -20,8 +20,8 @@ _RENAMED_REGEX = re.compile(
 
 
 class RenameWorker(QObject):
-    finished = pyqtSignal()
-    progress = pyqtSignal(int)
+    finished = Signal()
+    progress = Signal(int)
 
     def __init__(self, directory: Path, files: list[Path]) -> None:
         super().__init__()

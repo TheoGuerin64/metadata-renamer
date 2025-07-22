@@ -1,7 +1,7 @@
 from pathlib import Path
 
-from PyQt6.QtCore import Qt, QThread, pyqtSlot
-from PyQt6.QtWidgets import (
+from PySide6.QtCore import Qt, QThread, Slot
+from PySide6.QtWidgets import (
     QFileDialog,
     QHBoxLayout,
     QLineEdit,
@@ -92,7 +92,7 @@ class MainWidget(QWidget):
             self.directory_line_edit.setText(selected)
             self.rename_button.setEnabled(True)
 
-    @pyqtSlot()
+    @Slot()
     def start_rename_process(self) -> None:
         assert self._selected_path is not None
         files = list(self._selected_path.iterdir())
@@ -119,12 +119,12 @@ class MainWidget(QWidget):
 
         self._thread.start()
 
-    @pyqtSlot(int)
+    @Slot(int)
     def set_progress(self, index: int) -> None:
         self.progress_bar.setValue(index)
         self.progress_bar.setFormat(f"Renaming file {index}...")
 
-    @pyqtSlot()
+    @Slot()
     def rename_completed(self) -> None:
         self.rename_button.setEnabled(True)
         self.progress_bar.setFormat("Renaming completed")
