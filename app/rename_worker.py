@@ -42,7 +42,13 @@ class RenameWorker(QObject):
                 self.progress.emit(index)
                 continue
 
-            date = extract_date.from_file(path)
+            try:
+                date = extract_date.from_file(path)
+            except Exception as error:
+                logging.error(
+                    "Unexpected error extracting date from %s: %s", path, error
+                )
+                date = None
             if not date:
                 self.progress.emit(index)
                 continue
