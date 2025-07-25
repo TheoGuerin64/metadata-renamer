@@ -123,7 +123,9 @@ class MainWidget(QWidget):
     @Slot(int)
     def set_progress(self, index: int) -> None:
         self.progress_bar.setValue(index)
-        self.progress_bar.setFormat(f"Renaming file {index}...")
+        self.progress_bar.setFormat(
+            f"Renaming file {index}/{self.progress_bar.maximum()}"
+        )
 
     @Slot()
     def rename_completed(self) -> None:
