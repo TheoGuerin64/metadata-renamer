@@ -50,7 +50,11 @@ def _from_image(path: Path) -> datetime | None:
         logging.error("Failed to read %s: %s", path.name, error)
         return None
 
-    exif = image.getexif()
+    try:
+        exif = image.getexif()
+    except Exception as error:
+        logging.error("Failed to extract EXIF data from %s: %s", path.name, error)
+        return None
     if not exif:
         logging.info("No EXIF data found in %s", path.name)
         return None
@@ -92,11 +96,20 @@ def _from_video(path: Path) -> datetime | None:
         logging.error("No parser created for %s", path.name)
         return None
 
-    with parser:
-        metadata = extractMetadata(parser)
+    try:
+        with parser:
+            metadata = extractMetadata(parser)
+    except Exception as error:
+        logging.error("Failed to extract metadata from %s: %s", path.name, error)
+        return None
 
     if metadata and metadata.has("creation_date"):
-        creation_date = cast(datetime, metadata.get("creation_date"))
+        try:
+            creation_date = cast(datetime, metadata.get("creation_date"))
+        except ValueError as error:
+            logging.error("Failed to parse creation date in %s: %s", path.name, error)
+            return None
+
         logging.debug("Found metadata date '%s' in %s", creation_date, path.name)
         return creation_date
 
