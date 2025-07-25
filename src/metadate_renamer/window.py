@@ -15,7 +15,7 @@ from PySide6.QtWidgets import (
 from metadate_renamer.rename_worker import RenameWorker
 
 WINDOW_TITLE = "MetaDate Renamer"
-WINDOW_SIZE = (500, 74)
+WINDOW_WIDTH = 500
 
 
 class MainWindow(QMainWindow):
@@ -26,10 +26,12 @@ class MainWindow(QMainWindow):
 
     def _setup_ui(self) -> None:
         self.setWindowTitle(WINDOW_TITLE)
-        self.setFixedSize(*WINDOW_SIZE)
 
         main_widget = MainWidget(self)
         self.setCentralWidget(main_widget)
+
+        self.adjustSize()
+        self.setFixedSize(WINDOW_WIDTH, self.height())
 
 
 class MainWidget(QWidget):
