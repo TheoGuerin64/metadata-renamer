@@ -1,8 +1,13 @@
+import logging
 from pathlib import Path
 
 from PySide6.QtCore import Qt, QThread, Slot
 from PySide6.QtWidgets import (
+    QCheckBox,
+    QComboBox,
     QFileDialog,
+    QFormLayout,
+    QGroupBox,
     QHBoxLayout,
     QLineEdit,
     QMainWindow,
@@ -16,6 +21,13 @@ from metadate_renamer.rename_worker import RenameWorker
 
 WINDOW_TITLE = "MetaDate Renamer"
 WINDOW_WIDTH = 500
+DATE_TIME_FORMATS = {
+    "YYYY-MM-DD_HH.MM.SS": "%Y-%m-%d_%H.%M.%S",
+    "YYYY-MM-DD HH.MM.SS": "%Y-%m-%d %H.%M.%S",
+    "YYYY-MM-DD": "%Y-%m-%d",
+    "YYYY-MM": "%Y-%m",
+    "YYYY": "%Y",
+}
 
 
 class MainWindow(QMainWindow):
@@ -46,6 +58,7 @@ class MainWidget(QWidget):
     def _setup_ui(self) -> None:
         main_layout = QVBoxLayout(self)
         self._create_path_selector(main_layout)
+        self._create_options_controls(main_layout)
         self._create_rename_controls(main_layout)
 
     def _create_path_selector(self, main_layout: QVBoxLayout) -> None:
@@ -65,6 +78,24 @@ class MainWidget(QWidget):
         browse_button.setToolTip("Open a dialog to choose a directory")
         browse_button.clicked.connect(self._browse_directory)
         layout.addWidget(browse_button)
+
+    def _create_options_controls(self, main_layout: QVBoxLayout) -> None:
+        options_group = QGroupBox("Options")
+        main_layout.addWidget(options_group)
+
+        form_layout = QFormLayout()
+        options_group.setLayout(form_layout)
+
+        self.debug_checkbox = QCheckBox()
+        self.debug_checkbox.setToolTip("Enable debug mode for detailed logging")
+        form_layout.addRow("Debug:", self.debug_checkbox)
+
+        self.date_time_format_combo = QComboBox()
+        self.date_time_format_combo.addItems(list(DATE_TIME_FORMATS.keys()))
+        self.date_time_format_combo.setToolTip("Choose the target file-name format")
+        form_layout.addRow("Date Time Format:", self.date_time_format_combo)
+
+        main_layout.addSpacing(2)
 
     def _create_rename_controls(self, main_layout: QVBoxLayout) -> None:
         layout = QHBoxLayout()
@@ -107,9 +138,18 @@ class MainWidget(QWidget):
         self.progress_bar.setMaximum(len(files))
         self.progress_bar.setFormat("Renaming files...")
         self.rename_button.setEnabled(False)
+        self.debug_checkbox.setEnabled(False)
+        self.date_time_format_combo.setEnabled(False)
+
+        debug_mode = self.debug_checkbox.isChecked()
+        logger = logging.getLogger()
+        logger.setLevel(logging.DEBUG if debug_mode else logging.INFO)
+
+        date_time_format_key = self.date_time_format_combo.currentText()
+        date_time_format = DATE_TIME_FORMATS[date_time_format_key]
 
         self._thread = QThread()
-        self._worker = RenameWorker(self._selected_path, files)
+        self._worker = RenameWorker(self._selected_path, files, date_time_format)
         self._worker.moveToThread(self._thread)
 
         self._thread.started.connect(self._worker.run)
@@ -131,5 +171,7 @@ class MainWidget(QWidget):
 
     @Slot()
     def rename_completed(self) -> None:
-        self.rename_button.setEnabled(True)
         self.progress_bar.setFormat("Renaming completed")
+        self.rename_button.setEnabled(True)
+        self.debug_checkbox.setEnabled(True)
+        self.date_time_format_combo.setEnabled(True)

@@ -24,6 +24,8 @@ Download the latest Windows executables from the [Releases](https://github.com/T
 
 Logs are in the current working directory under the name `metadate-renamer.log`.
 
+Debug mode can be enabled in the options, to provide more detailed logging (this can generate big log files).
+
 They can be used to debug issues with the application. If you encounter a bug, please include the log file when reporting it.
 
 ## License

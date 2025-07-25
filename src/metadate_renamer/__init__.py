@@ -6,10 +6,8 @@ def main() -> None:
 
     from metadate_renamer.window import MainWindow
 
-    debug_mode = "--debug" in sys.argv or "-d" in sys.argv
-
     logging.basicConfig(
-        level=logging.DEBUG if debug_mode else logging.INFO,
+        level=logging.INFO,
         format="%(asctime)s - %(levelname)s - %(message)s",
         handlers=[
             logging.FileHandler("metadate_renamer.log"),

@@ -1,8 +1,8 @@
 from __future__ import annotations
 
 import logging
-import re
 from collections import Counter
+from datetime import datetime
 from typing import TYPE_CHECKING
 
 from PySide6.QtCore import QObject, Signal
@@ -10,23 +10,32 @@ from PySide6.QtCore import QObject, Signal
 from metadate_renamer import extract_date
 
 if TYPE_CHECKING:
-    from datetime import datetime
     from pathlib import Path
-
-_TARGET_DATE_FORMAT = "%Y-%m-%d_%H-%M-%S"
-_RENAMED_REGEX = re.compile(
-    r"^\d{4}-\d{2}-\d{2}_\d{2}-\d{2}-\d{2}(?:_\d+)?\.\w+$", re.IGNORECASE
-)
 
 
 class RenameWorker(QObject):
     finished = Signal()
     progress = Signal(int)
 
-    def __init__(self, directory: Path, files: list[Path]) -> None:
+    def __init__(self, directory: Path, files: list[Path], target_format: str) -> None:
         super().__init__()
         self._directory = directory
         self._files = files
+        self._target_format = target_format
+
+    def _is_renamed(self, path: Path) -> bool:
+        name = path.stem
+
+        last_underscore_index = name.rfind("_")
+        if last_underscore_index != -1 and name[last_underscore_index + 1 :].isdigit():
+            name = name[:last_underscore_index]
+
+        try:
+            datetime.strptime(name, self._target_format)
+        except ValueError:
+            return False
+
+        return True
 
     def run(self) -> None:
         date_counter: Counter[tuple[datetime, str]] = Counter()
@@ -37,7 +46,7 @@ class RenameWorker(QObject):
                 self.progress.emit(index)
                 continue
 
-            if _RENAMED_REGEX.match(path.name):
+            if self._is_renamed(path):
                 logging.debug("Skipping already renamed file: %s", path.name)
                 self.progress.emit(index)
                 continue
@@ -57,7 +66,7 @@ class RenameWorker(QObject):
                 count = date_counter[(date, path.suffix)]
                 date_counter[(date, path.suffix)] += 1
 
-                new_name = date.strftime(_TARGET_DATE_FORMAT)
+                new_name = date.strftime(self._target_format)
                 if count > 0:
                     new_name += f"_{count}"
                 new_name += path.suffix
