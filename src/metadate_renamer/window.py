@@ -82,6 +82,7 @@ class MainWidget(QWidget):
         self.progress_bar.setToolTip("Shows progress of the renaming process")
         layout.addWidget(self.progress_bar)
 
+    @Slot()
     def _browse_directory(self) -> None:
         dialog = QFileDialog(self, "Select Directory")
         dialog.setFileMode(QFileDialog.FileMode.Directory)
