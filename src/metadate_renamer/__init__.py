@@ -4,7 +4,7 @@ def main() -> None:
 
     from PySide6.QtWidgets import QApplication
 
-    from app.window import MainWindow
+    from metadate_renamer.window import MainWindow
 
     debug_mode = "--debug" in sys.argv or "-d" in sys.argv
 

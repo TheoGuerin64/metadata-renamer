@@ -12,7 +12,7 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
-from app.rename_worker import RenameWorker
+from metadate_renamer.rename_worker import RenameWorker
 
 WINDOW_TITLE = "MetaDate Renamer"
 WINDOW_SIZE = (500, 74)

@@ -35,7 +35,7 @@ wheels = [
 [[package]]
 name = "metadate-renamer"
 version = "0.1.2"
-source = { virtual = "." }
+source = { editable = "." }
 dependencies = [
     { name = "hachoir" },
     { name = "pillow" },

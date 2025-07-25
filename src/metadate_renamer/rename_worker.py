@@ -7,7 +7,7 @@ from typing import TYPE_CHECKING
 
 from PySide6.QtCore import QObject, Signal
 
-from app import extract_date
+from metadate_renamer import extract_date
 
 if TYPE_CHECKING:
     from datetime import datetime
